@@ -4,6 +4,15 @@ Postman repl uses IPython to present the user with an interface to communicate w
 It loads postman configuration data into global state, allowing for quick and easy
 communication with an API.
 
+# Features
+
+* Interactive history
+* Loading postman collections and environments
+* postman environment variable replacement
+* Tab completion
+* Middleware
+* Help descriptions
+
 # Loading
 
 * You can load middleware, environments, and requests through command line flags
@@ -13,7 +22,7 @@ communication with an API.
 
 # Requests
 
-* Requests are loaded into global P variable. TAB COMPLETION HELPS!
+* Requests are loaded into global P variable. Tab completion and help functions supported.
 * Requests are namespaced under there folder name.
 * You can simply call the request with no args to use the default parameters from the Postman config
 * Requests use the "requests" library.  You can pass the kwargs for the request.
@@ -46,6 +55,8 @@ communication with an API.
 
 # TODO
 
+* TESTS!
 * Support for other serialization formats besides JSON
 * Add auth support
 * Investigate postman unsupported features
+

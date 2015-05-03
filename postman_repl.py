@@ -194,8 +194,10 @@ def load_environment(path, merge=None):
 def parse_args():
     """ Parse command line args """
     parser = argparse.ArgumentParser(description='Postman Repl')
+
     parser.add_argument('collection_path', type=open, metavar='Collection',
                     help='The path to the postman collection file')
+
     parser.add_argument('--env', '-e', dest='env_path', type=open,
                     help='The path to a Postman environment file')
 
@@ -298,6 +300,26 @@ def get_middleware(folder, request_name):
     return middleware
 
 
+def make_docstring(request, folder, method):
+    """ Makes a docstring for the given request method """
+    if folder:
+        docstring = folder.META.folder_name + " / " + request["name"] + ":\n"
+
+    else:
+        docstring = request["name"] + ":\n"
+    docstring += request["method"] + " " + request["url"] + "\n"
+    if request["description"]:
+        docstring += request["description"]
+    if request["headers"]:
+        docstring += "\n\nDefault Headers:\n"
+        docstring += request["headers"]
+    if request["dataMode"] == "raw" and request["rawModeData"]:
+        docstring += "\n\nDefault Data:\n"
+        docstring += request["rawModeData"]
+    method.__doc__ = docstring
+    return method
+
+
 def make_request(request, request_name, folder):
     """ Create a request that can be called from teh repl """
     def do_request(env=None, **kwargs):
@@ -369,6 +391,8 @@ def make_request(request, request_name, folder):
             return data
     setattr(do_request, 'default_data', get_data)
 
+    do_request.__name__ = request_name
+    do_request = make_docstring(request, folder, do_request)
 
     return do_request
 
