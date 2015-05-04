@@ -4,6 +4,9 @@ Postman repl uses IPython to present the user with an interface to communicate w
 It loads postman configuration data into global state, allowing for quick and easy
 communication with an API.
 
+# Installation
+
+pip install postman_repl
 # Features
 
 * Interactive history
