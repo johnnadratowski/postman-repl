@@ -114,14 +114,14 @@ def new_recursive(**data):
             newObj[k] = v
     return newObj
 
-def new_recursive_list(data):
+def new_recursive_list(*data):
     """ Recursively converts all dicts in the given list of dicts to O and returns the list of new O objects """
     output = []
     for d in data:
         if isinstance(d, dict):
             output.append(new_recursive(**d))
         elif isinstance(d, (tuple, list)):
-            output.append(new_recursive_list(d))
+            output.append(new_recursive_list(*d))
         else:
             output.append(d)
 
@@ -137,7 +137,7 @@ D = None
 """Holds last response"""
 R = None
 """Holds default loaded environment"""
-E = None
+E = O()
 """Holds default loaded collection"""
 P = None
 
@@ -159,11 +159,12 @@ H.history = []
 
 def load_middleware(path):
     """ Load the middleware python script """
-    global MW
+    middlewares = O()
     loader = importlib.machinery.SourceFileLoader('middleware', path)
     middleware = loader.load_module()
     for mw in (d for d in dir(middleware) if not d.startswith("__")):
-        MW[mw] = getattr(middleware, mw)
+        middlewares[mw] = getattr(middleware, mw)
+    return middlewares
 
 
 def load_collection(path, merge=None):
@@ -171,6 +172,7 @@ def load_collection(path, merge=None):
     if isinstance(path, str):
         path = open(path)
     coll = json.load(path)
+    path.close()
     parsed = parse_requests(coll)
     if merge is None:
         return parsed
@@ -185,6 +187,7 @@ def load_environment(path, merge=None):
     if isinstance(path, str):
         path = open(path)
     env_data = json.load(path)
+    path.close()
     merge = merge or O()
     for item in env_data["values"]:
         merge[item["key"]] = item["value"]
@@ -222,7 +225,7 @@ def set_headers(request, kwargs, env=None):
         if not split:
             continue
         name, _, val = split.partition(":")
-        headers[name.strip()] = Template(val.strip()).render(**E._to_dict())
+        headers[name.strip()] = Template(val.strip()).render(**env._to_dict())
 
     if 'headers' in kwargs:
         headers.update(kwargs["headers"])
@@ -234,7 +237,7 @@ def set_headers(request, kwargs, env=None):
 def set_url(request, kwargs, env=None):
     """ Set the URL string for the request, additionally setting params into kwargs for request """
     env = env or E
-    url = Template(request["url"]).render(**E._to_dict())
+    url = Template(request["url"]).render(**env._to_dict())
     parsed_url = urlparse(url)
     url, _, _ = parsed_url.geturl().partition('?')
     params = parse_qs(parsed_url.query)
@@ -245,7 +248,7 @@ def set_url(request, kwargs, env=None):
             v = v[0]
 
         if v:
-            params[k] = Template(v).render(**E._to_dict())
+            params[k] = Template(v).render(**env._to_dict())
         else:
             params[k] = ""
 
@@ -285,12 +288,13 @@ def set_body(request, kwargs, env=None):
     return kwargs
 
 
-def get_middleware(folder, request_name):
+def get_middleware(folder, request_name, middlewares=None):
     """ Gets the middleware for the given folder + request """
+    middlewares = middlewares or MW
     if folder:
-        middleware = MW[folder.META.folder_name + "_" + request_name]
+        middleware = middlewares[folder.META.folder_name + "_" + request_name]
     else:
-        middleware = MW[request_name]
+        middleware = middlewares[request_name]
 
     if middleware is None:
         def default_middleware(run, kwargs, env):
@@ -303,7 +307,7 @@ def get_middleware(folder, request_name):
 def make_docstring(request, folder, method):
     """ Makes a docstring for the given request method """
     if folder:
-        docstring = folder.META.folder_name + " / " + request["name"] + ":\n"
+        docstring = folder.META.folder_name.title() + " / " + request["name"] + ":\n"
 
     else:
         docstring = request["name"] + ":\n"
@@ -322,63 +326,60 @@ def make_docstring(request, folder, method):
 
 def make_request(request, request_name, folder):
     """ Create a request that can be called from teh repl """
-    def do_request(env=None, **kwargs):
+    def do_request(env=None, middlewares=None, **kwargs):
         """ Run the request, setting the global variables for the response """
         global R, H, J, D
         env = env or E
+        middlewares = middlewares or MW
         kwargs = set_headers(request, kwargs, env=env)
 
         url, full_url, kwargs = set_url(request, kwargs, env=env)
 
         kwargs = set_body(request, kwargs, env=env)
 
-        middleware = get_middleware(folder, request_name)
+        middleware = get_middleware(folder, request_name, middlewares=middlewares)
 
         def inner_run(kwargs):
             global J, D, R, H
             if kwargs is None:
                 raise ValueError("Must pass kwargs to request from middleware")
 
-            def history_run():
-                """ Used to re-run from history """
-                global J, D, R, H
-                print("Making Request: ")
-                print("METHOD: ", request["method"])
-                print("URL: ", url)
-                print("Params: ", json.dumps(kwargs.get("params")))
-                print("Headers: ", json.dumps(kwargs.get("headers")))
-                print("Data: \n", kwargs.get("data"))
+            print("Making Request: ")
+            print("METHOD: ", request["method"])
+            print("URL: ", url)
+            print("Params: ", json.dumps(kwargs.get("params")))
+            print("Headers: ", json.dumps(kwargs.get("headers")))
+            print("Data: \n", kwargs.get("data"))
 
-                R = requests.request(request["method"], url, **kwargs)
+            R = requests.request(request["method"], url, **kwargs)
 
-                try:
-                    json_data = R.json()
-                    if isinstance(json_data, dict):
-                        J = new_recursive(**json_data)
-                    elif isinstance(json_data, (list, tuple)):
-                        J = new_recursive_list(json_data)
-                    else:
-                        J = json_data
-                except:
-                    pass
+            try:
+                json_data = R.json()
+                if isinstance(json_data, dict):
+                    J = new_recursive(**json_data)
+                elif isinstance(json_data, (list, tuple)):
+                    J = new_recursive_list(*json_data)
+                else:
+                    J = json_data
+            except:
+                pass
 
-                D = R.content
-
-                return R
-
-            R = history_run()
-            setattr(history_run, 'results', R)
-            setattr(history_run, 'data', D)
-            setattr(history_run, 'json', J)
-            setattr(history_run, 'url', full_url)
-            H.history.append(history_run)
+            D = R.content
 
             return R
 
-        ret_val = middleware(inner_run, kwargs, env)
-        if ret_val is None:
-            raise ValueError("NO RESPONSE FROM MIDDLEWARE! ENSURE YOU RETURN PROPER RESPONSE!")
-        return ret_val
+        def history_run():
+            """ Used to re-run from history """
+            return middleware(inner_run, kwargs, env)
+
+        R = history_run()
+        setattr(history_run, 'results', R)
+        setattr(history_run, 'data', D)
+        setattr(history_run, 'json', J)
+        setattr(history_run, 'url', full_url)
+        H.history.append(history_run)
+
+        return R
 
     setattr(do_request, 'META', O(**request))
 
@@ -443,7 +444,7 @@ def main():
         E = load_environment(args.env_path)
     P = load_collection(args.collection_path)
     if args.middleware_path:
-        load_middleware(args.middleware_path)
+        MW = load_middleware(args.middleware_path)
     IPython.embed()
 
 

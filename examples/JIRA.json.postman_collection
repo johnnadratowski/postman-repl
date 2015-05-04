@@ -1,0 +1,131 @@
+{
+	"id": "d6a9566d-3627-6de0-d0f9-5bfbb15fa7a4",
+	"name": "JIRA",
+	"description": "",
+	"order": [
+		"32761cdf-d791-ecfd-32f7-12ab8e011a95"
+	],
+	"folders": [
+		{
+			"id": "d9032c00-e882-3386-f09a-eeb7776c767b",
+			"name": "Sprints",
+			"description": "",
+			"order": [
+				"1c8e342b-b941-472c-5f53-374bdaffc309",
+				"81668ebe-ec12-989e-e7b0-c43d86b6bbad",
+				"32761cdf-d791-ecfd-32f7-12ab8e011a95"
+			],
+			"collection_name": "JIRA",
+			"collection_id": "d6a9566d-3627-6de0-d0f9-5bfbb15fa7a4"
+		},
+		{
+			"id": "22e76b90-bb4b-e268-d5a0-90c054504aac",
+			"name": "Users",
+			"description": "",
+			"order": [
+				"32988256-4ab1-8868-9c3b-b5635b12b265"
+			],
+			"collection_name": "JIRA",
+			"collection_id": "d6a9566d-3627-6de0-d0f9-5bfbb15fa7a4"
+		}
+	],
+	"timestamp": 1418026119196,
+	"synced": false,
+	"remoteLink": "",
+	"requests": [
+		{
+			"id": "1c8e342b-b941-472c-5f53-374bdaffc309",
+			"headers": "Authorization: Basic am9objphbkdlbDgz\n",
+			"url": "https://unified.jira.com/rest/greenhopper/latest/rapidviews/list",
+			"preRequestScript": "",
+			"pathVariables": {},
+			"method": "GET",
+			"data": [],
+			"dataMode": "params",
+			"version": 2,
+			"tests": "",
+			"currentHelper": "basicAuth",
+			"helperAttributes": {
+				"username": "user",
+				"password": "password"
+			},
+			"time": 1418033045480,
+			"name": "RapidView",
+			"description": "",
+			"collectionId": "d6a9566d-3627-6de0-d0f9-5bfbb15fa7a4",
+			"responses": [],
+			"synced": false
+		},
+		{
+			"id": "32761cdf-d791-ecfd-32f7-12ab8e011a95",
+			"headers": "Authorization: Basic am9objphbkdlbDgz\n",
+			"url": "https://unified.jira.com/rest/greenhopper/latest/rapid/charts/sprintreport?rapidViewId={{rapidViewId}}&sprintId={{sprintID}}",
+			"pathVariables": {},
+			"preRequestScript": "",
+			"method": "GET",
+			"data": [],
+			"dataMode": "params",
+			"name": "Sprint Issues",
+			"description": "",
+			"descriptionFormat": "html",
+			"time": 1418033134987,
+			"version": 2,
+			"responses": [],
+			"tests": "",
+			"currentHelper": "basicAuth",
+			"helperAttributes": {
+				"username": "user",
+				"password": "password"
+			},
+			"collectionId": "d6a9566d-3627-6de0-d0f9-5bfbb15fa7a4",
+			"synced": false
+		},
+		{
+			"id": "32988256-4ab1-8868-9c3b-b5635b12b265",
+			"headers": "Authorization: Basic am9objphbkdlbDgz\n",
+			"url": "https://unified.jira.com/rest/api/2/user/search?username=a",
+			"preRequestScript": "",
+			"pathVariables": {},
+			"method": "GET",
+			"data": [],
+			"dataMode": "params",
+			"version": 2,
+			"tests": "",
+			"currentHelper": "basicAuth",
+			"helperAttributes": {
+				"username": "user",
+				"password": "password"
+			},
+			"time": 1418032782875,
+			"name": "Search Username",
+			"description": "",
+			"collectionId": "d6a9566d-3627-6de0-d0f9-5bfbb15fa7a4",
+			"responses": [],
+			"synced": false
+		},
+		{
+			"id": "81668ebe-ec12-989e-e7b0-c43d86b6bbad",
+			"headers": "Authorization: Basic am9objphbkdlbDgz\n",
+			"url": "https://unified.jira.com/rest/greenhopper/latest/sprintquery/{{rapidViewId}}?includeHistoricSprints=true&includeFutureSprints=true",
+			"preRequestScript": "",
+			"pathVariables": {},
+			"method": "GET",
+			"data": [],
+			"dataMode": "raw",
+			"version": 2,
+			"tests": "",
+			"currentHelper": "basicAuth",
+			"helperAttributes": {
+				"username": "user",
+				"password": "password"
+			},
+			"time": 1418033075407,
+			"name": "Sprint",
+			"description": "Get a specific sprint from Jira",
+			"collectionId": "d6a9566d-3627-6de0-d0f9-5bfbb15fa7a4",
+			"responses": [],
+			"rawModeData": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}",
+			"synced": false
+		}
+	]
+}
