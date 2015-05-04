@@ -36,7 +36,7 @@ setup(
     author_email='john.nadratowski@gmail.com',
 
     # Choose your license
-    license='Apache 2.0',
+    license='Apache Software License',
 
     # See https://pypi.python.org/pypi?%3Aaction=list_classifiers
     classifiers=[
@@ -48,10 +48,10 @@ setup(
 
         # Indicate who your project is intended for
         'Intended Audience :: Developers',
-        'Topic :: Software Development :: repl',
+        'Topic :: Software Development :: User Interfaces',
 
         # Pick your license as you wish (should match "license" above)
-        'License :: OSI Approved :: Apache 2.0',
+        'License :: OSI Approved :: Apache Software License',
 
         # Specify the Python versions you support here. In particular, ensure
         # that you indicate whether you support Python 2, Python 3 or both.
