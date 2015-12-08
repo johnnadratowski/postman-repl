@@ -7,6 +7,7 @@ communication with an API.
 # Installation
 
 pip install postman_repl
+
 # Features
 
 * Interactive history
