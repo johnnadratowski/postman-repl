@@ -13,6 +13,7 @@ import pprint
 import re
 import requests
 import sys
+import copy
 from urllib.parse import urlparse, parse_qs
 
 
@@ -69,7 +70,7 @@ class O(object):
                 elif isinstance(x, (list, tuple)):
                     out.append(handle_list(x))
                 else:
-                    out.append(x)
+                    out.append(copy.copy(x))
             return out
 
         newDict = {}
@@ -79,7 +80,7 @@ class O(object):
             elif isinstance(v, (list, tuple)):
                 newDict[k] = handle_list(v)
             else:
-                newDict[k] = v
+                newDict[k] = copy.copy(v)
         return newDict
 
     def _to_json(self):
@@ -89,6 +90,19 @@ class O(object):
     def _pp(self):
         """ Pretty Print the object """
         pprint.pprint(self._to_dict_recursive())
+
+    def _update(self, newO):
+        """ Update the current O with the fields from the given O """
+        for x in newO:
+            self[x] = newO[x]
+        return self
+
+    def _copy(self, **kwargs):
+        """ Copies the object, adds kwargs to it, turning them into an O """
+        data = self._to_dict_recursive()
+        output = new_recursive(**data)
+        new_data = new_recursive(**kwargs)
+        return output._update(new_data)
 
 
 def new_recursive(**data):
