@@ -230,6 +230,10 @@ def parse_args():
     return args
 
 
+def env_replace(data, env):
+    """Template the text data with the environment data"""
+    return Template(data).render(**env._to_dict())
+
 def set_headers(request, kwargs, env=None):
     """ Set the request headers onto the kwargs for the request """
     env = env or E
@@ -239,7 +243,7 @@ def set_headers(request, kwargs, env=None):
         if not split:
             continue
         name, _, val = split.partition(":")
-        headers[name.strip()] = Template(val.strip()).render(**env._to_dict())
+        headers[name.strip()] = env_replace(val.strip(), env)
 
     if 'headers' in kwargs:
         headers.update(kwargs["headers"])
@@ -251,7 +255,7 @@ def set_headers(request, kwargs, env=None):
 def set_url(request, kwargs, env=None):
     """ Set the URL string for the request, additionally setting params into kwargs for request """
     env = env or E
-    url = Template(request["url"]).render(**env._to_dict())
+    url = env_replace(request["url"], env)
     parsed_url = urlparse(url)
     url, _, _ = parsed_url.geturl().partition('?')
     params = parse_qs(parsed_url.query)
@@ -262,7 +266,7 @@ def set_url(request, kwargs, env=None):
             v = v[0]
 
         if v:
-            params[k] = Template(v).render(**env._to_dict())
+            params[k] = env_replace(v, env)
         else:
             params[k] = ""
 
@@ -285,7 +289,7 @@ def get_default_request_data(request, env=None):
     """ Get the default request data from the request, given the env """
     env = env or E
     if request.get("rawModeData"):
-        return Template(request["rawModeData"]).render(**env._to_dict())
+        return env_replace(request["rawModeData"], env)
     elif request.get("data"):
         raise NotImplementedError("Not yet handing data format, only raw data")
 
@@ -338,6 +342,61 @@ def make_docstring(request, folder, method):
     return method
 
 
+def do_normal_request(request, url, **kwargs):
+    """Makes a normal request"""
+    print("Making Request: ")
+    print("METHOD: ", request["method"])
+    print("URL: ", url)
+    print("Params: ", json.dumps(kwargs.get("params")))
+    print("Headers: ", json.dumps(kwargs.get("headers")))
+    print("Data: \n", kwargs.get("data"))
+
+    return requests.request(request["method"], url, **kwargs)
+
+
+def do_oauth1_request(request, url, auth_data, **kwargs):
+    """Makes a normal request"""
+    from requests_oauthlib import OAuth1
+
+    auth = OAuth1(auth_data.consumer_key,
+                  auth_data.consumer_secret,
+                  auth_data.access_token,
+                  auth_data.access_token_secret,
+                  signature_type='auth_header')
+
+
+    print("Making oAuth1 Request: ")
+    print("METHOD: ", request["method"])
+    print("URL: ", url)
+    print("Params: ", json.dumps(kwargs.get("params")))
+    print("Headers: ", json.dumps(kwargs.get("headers")))
+    print("Auth: ", auth_data)
+    print("Data: \n", kwargs.get("data"))
+
+    return requests.request(request["method"],
+                            url,
+                            auth=auth,
+                            **kwargs)
+
+
+def get_auth(request, env=None):
+    """Get the auth information for the request"""
+    env = env or E
+    auth = request.get('currentHelper', None)
+    if auth == "oAuth1":
+        auth_data = request['helperAttributes']
+        return O(type=auth,
+                 consumer_key=env_replace(auth_data['consumerKey'], env),
+                 consumer_secret=env_replace(auth_data['consumerSecret'], env),
+                 access_token=env_replace(auth_data['token'], env),
+                 access_token_secret=env_replace(auth_data['tokenSecret'], env))
+    elif auth is None:
+        return None
+    else:
+        print("UNKNOWN AUTH TYPE: ", auth)
+        return None
+
+
 def make_request(request, request_name, folder):
     """ Create a request that can be called from teh repl """
     def do_request(env=None, middlewares=None, **kwargs):
@@ -345,6 +404,9 @@ def make_request(request, request_name, folder):
         global R, H, J, D
         env = env or E
         middlewares = middlewares or MW
+
+        auth = get_auth(request, env=env)
+
         kwargs = set_headers(request, kwargs, env=env)
 
         url, full_url, kwargs = set_url(request, kwargs, env=env)
@@ -358,14 +420,13 @@ def make_request(request, request_name, folder):
             if kwargs is None:
                 raise ValueError("Must pass kwargs to request from middleware")
 
-            print("Making Request: ")
-            print("METHOD: ", request["method"])
-            print("URL: ", url)
-            print("Params: ", json.dumps(kwargs.get("params")))
-            print("Headers: ", json.dumps(kwargs.get("headers")))
-            print("Data: \n", kwargs.get("data"))
-
-            R = requests.request(request["method"], url, **kwargs)
+            if auth is None:
+                R = do_normal_request(request, url, **kwargs)
+            elif auth.type == "oAuth1":
+                R = do_oauth1_request(request, url, auth, **kwargs)
+            else:
+                print("Attempting normal request with unknown auth type", auth)
+                R = do_normal_request(request, url, **kwargs)
 
             try:
                 json_data = R.json()
