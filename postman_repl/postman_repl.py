@@ -188,7 +188,7 @@ class HistoryRunner(object):
         self.json = json
 
     def __repr__(self):
-        return "{url}".format(url=self.url)
+        return "[{method}] {url}".format(method=self.request["method"], url=self.url)
 
     def inner_run(self, kwargs):
         global J, D, R
