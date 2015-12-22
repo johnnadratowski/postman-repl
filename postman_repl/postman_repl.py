@@ -143,6 +143,34 @@ def new_recursive_list(*data):
     return output
 
 
+class Folder(O):
+
+    def _get_repr(self, level=0):
+        if self.META:
+            out = [self.META.name, "=" * len(self.META.name)]
+        else:
+            out = []
+
+        for x in self:
+            if x.startswith("_"):
+                continue
+
+            if isinstance(self[x], Folder):
+                out.append(("--" * level) + self[x]._get_repr(level+1) + "\n")
+
+        for x in self:
+            if x.startswith("_"):
+                continue
+
+            if isinstance(self[x], Runner):
+                out.append(("--" * (level+1)) + " " + repr(self[x]) + "\n")
+
+        return "\n".join(out)
+
+
+    def __repr__(self):
+        return self._get_repr()
+
 class HistoryRunner(object):
     """
     Holds the state for a history request.
@@ -159,6 +187,9 @@ class HistoryRunner(object):
         self.data = data
         self.json = json
 
+    def __repr__(self):
+        return "{url}".format(url=self.url)
+
     def inner_run(self, kwargs):
         global J, D, R
         if kwargs is None:
@@ -168,6 +199,10 @@ class HistoryRunner(object):
             R = do_normal_request(self.request, self.url, **kwargs)
         elif self.auth.type == "oAuth1":
             R = do_oauth1_request(self.request, self.url, self.auth, **kwargs)
+        elif self.auth.type == "basicAuth":
+            R = do_basic_auth_request(self.request, self.url, self.auth, **kwargs)
+        elif self.auth.type == "digestAuth":
+            R = do_digest_auth_request(self.request, self.url, self.auth, **kwargs)
         else:
             print("Attempting normal request with unknown auth type", self.auth)
             R = do_normal_request(self.request, self.url, **kwargs)
@@ -218,6 +253,9 @@ class Runner(object):
                       self.env._copy(**kwargs),
                       self.middlewares)
 
+    def __repr__(self):
+        return "{name} - [{method}] {url}".format(name=self.request_name, method=self.request["method"], url=self.request["url"])
+
     def __call__(self, env=None, middlewares=None, **kwargs):
         global R, H, J, D
 
@@ -261,7 +299,7 @@ class History(object):
             return H.history[run]()
 
     def __repr__(self):
-        return "\n".join(["{0}: {1}".format(idx, hist.url)
+        return "\n".join(["{0}: {1}".format(idx, hist)
                           for idx, hist in enumerate(self.history)])
 
 """Holds the middleware"""
@@ -463,6 +501,38 @@ def do_normal_request(request, url, **kwargs):
     return requests.request(request["method"], url, **kwargs)
 
 
+def do_basic_auth_request(request, url, auth_data, **kwargs):
+    """Makes a normal request"""
+    from requests.auth import HTTPBasicAuth
+    auth = HTTPBasicAuth(auth_data.username, auth_data.password)
+
+    print("Making Request: ")
+    print("METHOD: ", request["method"])
+    print("URL: ", url)
+    print("Params: ", json.dumps(kwargs.get("params")))
+    print("Headers: ", json.dumps(kwargs.get("headers")))
+    print("Basic Auth Data: ", auth_data)
+    print("Data: \n", kwargs.get("data"))
+
+    return requests.request(request["method"], url, auth=auth, **kwargs)
+
+
+def do_digest_auth_request(request, url, auth_data, **kwargs):
+    """Makes a normal request"""
+    from requests.auth import HTTPDigestAuth
+    auth = HTTPDigestAuth(auth_data.username, auth_data.password)
+
+    print("Making Request: ")
+    print("METHOD: ", request["method"])
+    print("URL: ", url)
+    print("Params: ", json.dumps(kwargs.get("params")))
+    print("Headers: ", json.dumps(kwargs.get("headers")))
+    print("Digest Auth Data: ", auth_data)
+    print("Data: \n", kwargs.get("data"))
+
+    return requests.request(request["method"], url, auth=auth, **kwargs)
+
+
 def do_oauth1_request(request, url, auth_data, **kwargs):
     """Makes a normal request"""
     from requests_oauthlib import OAuth1
@@ -479,7 +549,7 @@ def do_oauth1_request(request, url, auth_data, **kwargs):
     print("URL: ", url)
     print("Params: ", json.dumps(kwargs.get("params")))
     print("Headers: ", json.dumps(kwargs.get("headers")))
-    print("Auth: ", auth_data)
+    print("OAuth1 Data: ", auth_data)
     print("Data: \n", kwargs.get("data"))
 
     return requests.request(request["method"],
@@ -492,13 +562,21 @@ def get_auth(request, env=None):
     """Get the auth information for the request"""
     env = env or E
     auth = request.get('currentHelper', None)
+    auth_data = request.get('helperAttributes', {})
     if auth == "oAuth1":
-        auth_data = request['helperAttributes']
         return O(type=auth,
                  consumer_key=env_replace(auth_data['consumerKey'], env),
                  consumer_secret=env_replace(auth_data['consumerSecret'], env),
                  access_token=env_replace(auth_data['token'], env),
                  access_token_secret=env_replace(auth_data['tokenSecret'], env))
+    elif auth == "basicAuth":
+        return O(type=auth,
+                 username=env_replace(auth_data['username'], env),
+                 password=env_replace(auth_data['password'], env))
+    elif auth == "digestAuth":
+        return O(type=auth,
+                 username=env_replace(auth_data['username'], env),
+                 password=env_replace(auth_data['password'], env))
     elif auth is None:
         return None
     else:
@@ -536,11 +614,11 @@ def fix_name(name):
 
 def parse_requests(coll):
     """ Parse out the requests and folders from the collection file """
-    folders = O()
+    folders = Folder()
     if "folders" in coll:
         for folder in coll["folders"]:
             folder_name = fix_name(folder["name"])
-            folders[folder_name] = O(META=O(folder_name=folder_name, **folder))
+            folders[folder_name] = Folder(META=O(folder_name=folder_name, **folder))
 
     for request in coll["requests"]:
         folder = get_request_folder(request, folders)
