@@ -5,16 +5,16 @@ Script for starting a repl with postman configs/env loaded.
 
 
 import argparse
-import importlib.machinery
-import IPython
-from jinja2 import Template
 import json
 import pprint
 import re
-import requests
 import sys
 import copy
 from urllib.parse import urlparse, parse_qs
+import importlib.machinery
+import IPython
+from jinja2 import Template
+import requests
 
 
 class O(object):
@@ -128,6 +128,7 @@ def new_recursive(**data):
             newObj[k] = v
     return newObj
 
+
 def new_recursive_list(*data):
     """ Recursively converts all dicts in the given list of dicts to O and returns the list of new O objects """
     output = []
@@ -142,6 +143,127 @@ def new_recursive_list(*data):
     return output
 
 
+class HistoryRunner(object):
+    """
+    Holds the state for a history request.
+    Represents a ran request in the History that can be replayed.
+    """
+    def __init__(self, request, kwargs, env, middleware, auth, url, results=None, data=None, json=None):
+        self.request = request
+        self.kwargs = kwargs
+        self.env = env
+        self.middleware = middleware
+        self.auth = auth
+        self.url = url
+        self.results = results
+        self.data = data
+        self.json = json
+
+    def inner_run(self, kwargs):
+        global J, D, R
+        if kwargs is None:
+            raise ValueError("Must pass kwargs to request from middleware")
+
+        if self.auth is None:
+            R = do_normal_request(self.request, self.url, **kwargs)
+        elif self.auth.type == "oAuth1":
+            R = do_oauth1_request(self.request, self.url, self.auth, **kwargs)
+        else:
+            print("Attempting normal request with unknown auth type", self.auth)
+            R = do_normal_request(self.request, self.url, **kwargs)
+
+        try:
+            json_data = R.json()
+            if isinstance(json_data, dict):
+                J = new_recursive(**json_data)
+            elif isinstance(json_data, (list, tuple)):
+                J = new_recursive_list(*json_data)
+            else:
+                J = json_data
+        except:
+            pass
+
+        D = R.content
+
+        return R
+
+    def __call__(self):
+        """ Used to re-run from history """
+        return self.middleware(self.inner_run, self.kwargs, self.env)
+
+
+class Runner(object):
+    """
+    Holds the state for running a request.
+    """
+    def __init__(self, request, request_name, folder, env, middlewares):
+        self.request = request
+        self.request_name = request_name
+        self.folder = folder
+        self.env = env
+        self.middlewares = middlewares
+        self.META = O(**request)
+
+    def default_data(self):
+        data = get_default_request_data(self.request, env=self.env)
+        try:
+            return O(**json.loads(data))
+        except:
+            return data
+
+    def add_env(self, **kwargs):
+        return Runner(self.request,
+                      self.request_name,
+                      self.folder,
+                      self.env._copy(**kwargs),
+                      self.middlewares)
+
+    def __call__(self, env=None, middlewares=None, **kwargs):
+        global R, H, J, D
+
+        request = self.request
+        request_name = self.request_name
+        folder = self.folder
+        env = env or self.env
+        middlewares = middlewares or self.middlewares
+
+        auth = get_auth(request, env=env)
+
+        kwargs = set_headers(request, kwargs, env=env)
+
+        url, full_url, kwargs = set_url(request, kwargs, env=env)
+
+        kwargs = set_body(request, kwargs, env=env)
+
+        middleware = get_middleware(folder, request_name, middlewares=middlewares)
+
+        runner = HistoryRunner(request, kwargs, env, middleware, auth, full_url)
+
+        R = runner()
+        runner.results = R
+        runner.data = D
+        runner.json = J
+        H.history.append(runner)
+
+        return R
+
+
+class History(object):
+    """Holds the history of the requests"""
+    def __init__(self):
+        self.history = []
+
+    def __call__(self, run=None):
+        """ Command to run or show history.  Run should be history index """
+        if run is None:
+            print(repr(self))
+        else:
+            return H.history[run]()
+
+    def __repr__(self):
+        return "\n".join(["{0}: {1}".format(idx, hist.url)
+                          for idx, hist in enumerate(self.history)])
+
 """Holds the middleware"""
 MW = O()
 """Holds last response's data, parsed to JSON as a O"""
@@ -154,21 +276,8 @@ R = None
 E = O()
 """Holds default loaded collection"""
 P = None
-
-
-def history(run=None):
-    """ Command to run or show history.  Run should be history index """
-    global H
-    if run is None:
-        for idx, hist in enumerate(H.history):
-            print("{0}: {1}".format(idx, hist.url))
-    else:
-        return H.history[run]()
-
-
 """Holds call history"""
-H = history
-H.history = []
+H = History()
 
 
 def load_middleware(path):
@@ -398,74 +507,8 @@ def get_auth(request, env=None):
 
 
 def make_request(request, request_name, folder):
-    """ Create a request that can be called from teh repl """
-    def do_request(env=None, middlewares=None, **kwargs):
-        """ Run the request, setting the global variables for the response """
-        global R, H, J, D
-        env = env or E
-        middlewares = middlewares or MW
-
-        auth = get_auth(request, env=env)
-
-        kwargs = set_headers(request, kwargs, env=env)
-
-        url, full_url, kwargs = set_url(request, kwargs, env=env)
-
-        kwargs = set_body(request, kwargs, env=env)
-
-        middleware = get_middleware(folder, request_name, middlewares=middlewares)
-
-        def inner_run(kwargs):
-            global J, D, R, H
-            if kwargs is None:
-                raise ValueError("Must pass kwargs to request from middleware")
-
-            if auth is None:
-                R = do_normal_request(request, url, **kwargs)
-            elif auth.type == "oAuth1":
-                R = do_oauth1_request(request, url, auth, **kwargs)
-            else:
-                print("Attempting normal request with unknown auth type", auth)
-                R = do_normal_request(request, url, **kwargs)
-
-            try:
-                json_data = R.json()
-                if isinstance(json_data, dict):
-                    J = new_recursive(**json_data)
-                elif isinstance(json_data, (list, tuple)):
-                    J = new_recursive_list(*json_data)
-                else:
-                    J = json_data
-            except:
-                pass
-
-            D = R.content
-
-            return R
-
-        def history_run():
-            """ Used to re-run from history """
-            return middleware(inner_run, kwargs, env)
-
-        R = history_run()
-        setattr(history_run, 'results', R)
-        setattr(history_run, 'data', D)
-        setattr(history_run, 'json', J)
-        setattr(history_run, 'url', full_url)
-        H.history.append(history_run)
-
-        return R
-
-    setattr(do_request, 'META', O(**request))
-
-    def get_data(env=None):
-        env = env or E
-        data = get_default_request_data(request, env=env)
-        try:
-            return O(**json.loads(data))
-        except:
-            return data
-    setattr(do_request, 'default_data', get_data)
+    """ Create a request that can be called from the repl """
+    do_request = Runner(request, request_name, folder, E, MW)
 
     do_request.__name__ = request_name
     do_request = make_docstring(request, folder, do_request)
