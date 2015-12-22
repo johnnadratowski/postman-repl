@@ -87,6 +87,10 @@ class O(object):
         """ Converts the O to JSON """
         return json.dumps(self._to_dict_recursive())
 
+    def _pformat(self):
+        """ Pretty Format the object """
+        return pprint.pformat(self._to_dict_recursive())
+
     def _pp(self):
         """ Pretty Print the object """
         pprint.pprint(self._to_dict_recursive())
@@ -163,7 +167,7 @@ class Folder(O):
                 continue
 
             if isinstance(self[x], Runner):
-                out.append(("--" * (level+1)) + " " + repr(self[x]) + "\n")
+                out.append(("--" * (level+1)) + " " + self[x].short_repr() + "\n")
 
         return "\n".join(out)
 
@@ -196,7 +200,9 @@ class HistoryRunner(object):
             raise ValueError("Must pass kwargs to request from middleware")
 
         if self.auth is None:
-            R = do_normal_request(self.request, self.url, **kwargs)
+            R = do_no_auth_request(self.request, self.url, **kwargs)
+        elif isinstance(self.auth, requests.auth.AuthBase):
+            R = do_custom_auth_request(self.request, self.url, self.auth, **kwargs)
         elif self.auth.type == "oAuth1":
             R = do_oauth1_request(self.request, self.url, self.auth, **kwargs)
         elif self.auth.type == "basicAuth":
@@ -204,8 +210,8 @@ class HistoryRunner(object):
         elif self.auth.type == "digestAuth":
             R = do_digest_auth_request(self.request, self.url, self.auth, **kwargs)
         else:
-            print("Attempting normal request with unknown auth type", self.auth)
-            R = do_normal_request(self.request, self.url, **kwargs)
+            print("Attempting no auth request with unknown auth type", self.auth)
+            R = do_no_auth_request(self.request, self.url, **kwargs)
 
         try:
             json_data = R.json()
@@ -254,9 +260,12 @@ class Runner(object):
                       self.middlewares)
 
     def __repr__(self):
+        return self.__doc__
+
+    def short_repr(self):
         return "{name} - [{method}] {url}".format(name=self.request_name, method=self.request["method"], url=self.request["url"])
 
-    def __call__(self, env=None, middlewares=None, **kwargs):
+    def __call__(self, env=None, middlewares=None, auth=None, **kwargs):
         global R, H, J, D
 
         request = self.request
@@ -265,7 +274,7 @@ class Runner(object):
         env = env or self.env
         middlewares = middlewares or self.middlewares
 
-        auth = get_auth(request, env=env)
+        auth = auth or get_auth(request, env=env)
 
         kwargs = set_headers(request, kwargs, env=env)
 
@@ -476,26 +485,44 @@ def make_docstring(request, folder, method):
 
     else:
         docstring = request["name"] + ":\n"
-    docstring += request["method"] + " " + request["url"] + "\n"
+
+    docstring += "[{method}] {url}\n".format(method=request["method"],
+                                             url=request["url"])
+
     if request["description"]:
         docstring += request["description"]
     if request["headers"]:
-        docstring += "\n\nDefault Headers:\n"
-        docstring += request["headers"]
+        docstring += "\nDefault Headers:\n{headers}".format(headers=request["headers"])
     if request["dataMode"] == "raw" and request["rawModeData"]:
-        docstring += "\n\nDefault Data:\n"
-        docstring += request["rawModeData"]
+        docstring += "\nDefault Data:\n{data}".format(data=request["rawModeData"])
+    auth = get_auth(request)
+    if auth:
+        docstring += "\nDefault Auth Data:\n{auth}".format(auth=auth._pformat())
+
     method.__doc__ = docstring
     return method
 
 
-def do_normal_request(request, url, **kwargs):
+def do_no_auth_request(request, url, **kwargs):
     """Makes a normal request"""
     print("Making Request: ")
     print("METHOD: ", request["method"])
     print("URL: ", url)
     print("Params: ", json.dumps(kwargs.get("params")))
     print("Headers: ", json.dumps(kwargs.get("headers")))
+    print("Data: \n", kwargs.get("data"))
+
+    return requests.request(request["method"], url, **kwargs)
+
+
+def do_custom_auth_request(request, url, auth_data, **kwargs):
+    """Makes a normal request"""
+    print("Making Request: ")
+    print("METHOD: ", request["method"])
+    print("URL: ", url)
+    print("Params: ", json.dumps(kwargs.get("params")))
+    print("Headers: ", json.dumps(kwargs.get("headers")))
+    print("Custom Auth Data: ", auth_data)
     print("Data: \n", kwargs.get("data"))
 
     return requests.request(request["method"], url, **kwargs)
@@ -577,7 +604,7 @@ def get_auth(request, env=None):
         return O(type=auth,
                  username=env_replace(auth_data['username'], env),
                  password=env_replace(auth_data['password'], env))
-    elif auth is None:
+    elif auth is None or auth == "normal":
         return None
     else:
         print("UNKNOWN AUTH TYPE: ", auth)
