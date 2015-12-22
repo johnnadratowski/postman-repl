@@ -194,6 +194,19 @@ class HistoryRunner(object):
     def __repr__(self):
         return "[{method}] {url}".format(method=self.request["method"], url=self.url)
 
+    def info(self):
+        print("METHOD: ", self.request["method"])
+        print("URL: ", self.url)
+        print("Params: ", json.dumps(self.kwargs.get("params")))
+        print("Headers: ", json.dumps(self.kwargs.get("headers")))
+        print("Data: \n", self.kwargs.get("data"))
+        print("RESULTS: ")
+        print(self.results.status_code)
+        if self.json:
+            print(self.json)
+        else:
+            print(self.data)
+
     def inner_run(self, kwargs):
         global J, D, R
         if kwargs is None:
@@ -237,11 +250,12 @@ class Runner(object):
     """
     Holds the state for running a request.
     """
-    def __init__(self, request, request_name, folder, env, middlewares):
+    def __init__(self, request, request_name, folder, env, middlewares, kwargs=None):
         self.request = request
         self.request_name = request_name
         self.folder = folder
         self.env = env
+        self.kwargs = kwargs or {}
         self.middlewares = middlewares
         self.META = O(**request)
 
@@ -257,7 +271,42 @@ class Runner(object):
                       self.request_name,
                       self.folder,
                       self.env._copy(**kwargs),
-                      self.middlewares)
+                      self.middlewares,
+                      self.kwargs)
+
+    def add_params(self, **kwargs):
+        new_kwargs = self.kwargs.copy()
+        if 'params' in new_kwargs:
+            new_kwargs['params'].update(**kwargs)
+        else:
+            new_kwargs['params'] = kwargs
+        return Runner(self.request,
+                      self.request_name,
+                      self.folder,
+                      self.env,
+                      self.middlewares,
+                      new_kwargs)
+
+    def add_headers(self, **kwargs):
+        new_kwargs = self.kwargs.copy()
+        if 'headers' in new_kwargs:
+            new_kwargs['headers'].update(**kwargs)
+        else:
+            new_kwargs['headers'] = kwargs
+        return Runner(self.request,
+                      self.request_name,
+                      self.folder,
+                      self.env,
+                      self.middlewares,
+                      new_kwargs)
+
+    def add_kwargs(self, **kwargs):
+        return Runner(self.request,
+                      self.request_name,
+                      self.folder,
+                      self.env,
+                      self.middlewares,
+                      self.kwargs.copy.update(**kwargs))
 
     def __repr__(self):
         return self.__doc__
@@ -267,6 +316,9 @@ class Runner(object):
 
     def __call__(self, env=None, middlewares=None, auth=None, **kwargs):
         global R, H, J, D
+
+        kwargs = self.kwargs.copy()
+        kwargs.update(**kwargs)
 
         request = self.request
         request_name = self.request_name
@@ -284,7 +336,7 @@ class Runner(object):
 
         middleware = get_middleware(folder, request_name, middlewares=middlewares)
 
-        runner = HistoryRunner(request, kwargs, env, middleware, auth, full_url)
+        runner = HistoryRunner(request, kwargs, env, middleware, auth, url)
 
         R = runner()
         runner.results = R
@@ -299,6 +351,9 @@ class History(object):
     """Holds the history of the requests"""
     def __init__(self):
         self.history = []
+
+    def __getitem__(self, key):
+        return self.history.__getitem__(key)
 
     def __call__(self, run=None):
         """ Command to run or show history.  Run should be history index """
@@ -426,7 +481,7 @@ def set_url(request, kwargs, env=None):
         else:
             params[k] = ""
 
-    if params and kwargs.get("params"):
+    if params and "params" in kwargs:
         params.update(kwargs["params"])
 
     kwargs["params"] = params
