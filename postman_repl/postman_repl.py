@@ -191,21 +191,23 @@ class HistoryRunner(object):
         self.data = data
         self.json = json
 
-    def __repr__(self):
+    def short_repr(self):
         return "[{method}] {url}".format(method=self.request["method"], url=self.url)
 
-    def info(self):
-        print("METHOD: ", self.request["method"])
-        print("URL: ", self.url)
-        print("Params: ", json.dumps(self.kwargs.get("params")))
-        print("Headers: ", json.dumps(self.kwargs.get("headers")))
-        print("Data: \n", self.kwargs.get("data"))
-        print("RESULTS: ")
-        print(self.results.status_code)
-        if self.json:
-            print(self.json)
-        else:
-            print(self.data)
+    def __repr__(self):
+        return self._get_info()
+
+    def _get_info(self):
+        output = "[{}] {}\n".format(self.request["method"], self.url)
+        output += "Params: {}\n".format(json.dumps(self.kwargs.get("params")))
+        output += "Headers: {}\n".format(json.dumps(self.kwargs.get("headers")))
+        output += "Data: \n{}\n".format(self.kwargs.get("data"))
+
+        if self.results is not None:
+            data = self.json or self.data
+            output += "RESULTS: \nStatus Code: {}\n{}".format(self.results.status_code, data)
+
+        return output
 
     def inner_run(self, kwargs):
         global J, D, R
@@ -342,7 +344,7 @@ class Runner(object):
         runner.results = R
         runner.data = D
         runner.json = J
-        H.history.append(runner)
+        H.add_history_item(runner)
 
         return R
 
@@ -363,8 +365,12 @@ class History(object):
             return H.history[run]()
 
     def __repr__(self):
-        return "\n".join(["{0}: {1}".format(idx, hist)
+        return "\n".join(["{0}: {1}".format(idx, hist.short_repr())
                           for idx, hist in enumerate(self.history)])
+
+    def add_history_item(self, item):
+        item.__doc__ = item._get_info()
+        self.history.append(item)
 
 """Holds the middleware"""
 MW = O()
